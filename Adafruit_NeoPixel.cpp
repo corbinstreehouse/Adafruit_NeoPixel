@@ -33,7 +33,7 @@
 
 #include "Adafruit_NeoPixel.h"
 
-Adafruit_NeoPixel::Adafruit_NeoPixel(uint16_t n, uint8_t p, uint8_t t) : numLEDs(n), numBytes(n * 3), pin(p), pixels(NULL)
+Adafruit_NeoPixel::Adafruit_NeoPixel(uint16_t n, uint8_t p, uint8_t t) : numLEDs(n), _numberOfBytes(n * 3), pin(p)
 #if defined(NEO_RGB) || defined(NEO_KHZ400)
   ,type(t)
 #endif
@@ -42,14 +42,13 @@ Adafruit_NeoPixel::Adafruit_NeoPixel(uint16_t n, uint8_t p, uint8_t t) : numLEDs
    pinMask(digitalPinToBitMask(p))
 #endif
 {
-  if((pixels = (uint8_t *)malloc(numBytes))) {
-    memset(pixels, 0, numBytes);
-  }
+    pixels = (uint8_t *)malloc(_numberOfBytes);
+    memset(pixels, 0, _numberOfBytes);
 }
 
 Adafruit_NeoPixel::~Adafruit_NeoPixel() {
   if(pixels) free(pixels);
-  pinMode(pin, INPUT);
+//  pinMode(pin, INPUT);
 }
 
 void Adafruit_NeoPixel::begin(void) {
@@ -59,7 +58,7 @@ void Adafruit_NeoPixel::begin(void) {
 
 void Adafruit_NeoPixel::show(void) {
 
-  if(!pixels) return;
+//  if(!pixels) return; // corbin, constructor should always allocate, unless _numberOfBytes was 0..
 
   // Data latch = 50+ microsecond pause in the output stream.  Rather than
   // put a delay at the end of the function, the ending time is noted and
@@ -87,7 +86,7 @@ void Adafruit_NeoPixel::show(void) {
 #ifdef __AVR__
 
   volatile uint16_t
-    i   = numBytes; // Loop counter
+    i   = _numberOfBytes; // Loop counter
   volatile uint8_t
    *ptr = pixels,   // Pointer to next byte
     b   = *ptr++,   // Current byte value
@@ -673,7 +672,7 @@ void Adafruit_NeoPixel::show(void) {
 #define CYCLES_400      (F_CPU /  400000)
 
   uint8_t          *p   = pixels,
-                   *end = p + numBytes, pix, mask;
+                   *end = p + _numberOfBytes, pix, mask;
   volatile uint8_t *set = portSetRegister(pin),
                    *clr = portClearRegister(pin);
   uint32_t          cyc;
@@ -750,7 +749,7 @@ void Adafruit_NeoPixel::show(void) {
   timeValue = &(TC1->TC_CHANNEL[0].TC_CV);  // the initial 'while'.
   timeReset = &(TC1->TC_CHANNEL[0].TC_CCR);
   p         =  pixels;
-  end       =  p + numBytes;
+  end       =  p + _numberOfBytes;
   pix       = *p++;
   mask      = 0x80;
 
@@ -831,30 +830,29 @@ void Adafruit_NeoPixel::setPixelColor(
 
 // Set pixel color from 'packed' 32-bit RGB color:
 void Adafruit_NeoPixel::setPixelColor(uint16_t n, uint32_t c) {
-  if(n < numLEDs) {
-    uint8_t
-      r = (uint8_t)(c >> 16),
-      g = (uint8_t)(c >>  8),
-      b = (uint8_t)c;
-    if(brightness) { // See notes in setBrightness()
-      r = (r * brightness) >> 8;
-      g = (g * brightness) >> 8;
-      b = (b * brightness) >> 8;
-    }
-    uint8_t *p = &pixels[n * 3];
+    if (n < numLEDs) {
+        uint8_t r = (uint8_t)(c >> 16);
+        uint8_t g = (uint8_t)(c >>  8);
+        uint8_t b = (uint8_t)c;
+        if (brightness) { // See notes in setBrightness()
+            r = (r * brightness) >> 8;
+            g = (g * brightness) >> 8;
+            b = (b * brightness) >> 8;
+        }
+        uint8_t *p = &pixels[n * 3];
 #ifdef NEO_RGB
-    if((type & NEO_COLMASK) == NEO_GRB) {
+        if((type & NEO_COLMASK) == NEO_GRB) {
 #endif
-      *p++ = g;
-      *p++ = r;
+            *p++ = g;
+            *p++ = r;
 #ifdef NEO_RGB
-    } else {
-      *p++ = r;
-      *p++ = g;
-    }
+        } else {
+            *p++ = r;
+            *p++ = g;
+        }
 #endif
-    *p = b;
-  }
+        *p = b;
+    }
 }
 
 // Convert separate R,G,B into packed 32-bit RGB color.
@@ -906,26 +904,26 @@ uint16_t Adafruit_NeoPixel::numPixels(void) const {
 // quite visible in the re-scaled version.  For a non-destructive
 // change, you'll need to re-render the full strip data.  C'est la vie.
 void Adafruit_NeoPixel::setBrightness(uint8_t b) {
-  // Stored brightness value is different than what's passed.
-  // This simplifies the actual scaling math later, allowing a fast
-  // 8x8-bit multiply and taking the MSB.  'brightness' is a uint8_t,
-  // adding 1 here may (intentionally) roll over...so 0 = max brightness
-  // (color values are interpreted literally; no scaling), 1 = min
-  // brightness (off), 255 = just below max brightness.
-  uint8_t newBrightness = b + 1;
-  if(newBrightness != brightness) { // Compare against prior value
-    // Brightness has changed -- re-scale existing data in RAM
-    uint8_t  c,
-            *ptr           = pixels,
-             oldBrightness = brightness - 1; // De-wrap old brightness value
-    uint16_t scale;
-    if(oldBrightness == 0) scale = 0; // Avoid /0
-    else if(b == 255) scale = 65535 / oldBrightness;
-    else scale = (((uint16_t)newBrightness << 8) - 1) / oldBrightness;
-    for(uint16_t i=0; i<numBytes; i++) {
-      c      = *ptr;
-      *ptr++ = (c * scale) >> 8;
+    // Stored brightness value is different than what's passed.
+    // This simplifies the actual scaling math later, allowing a fast
+    // 8x8-bit multiply and taking the MSB.  'brightness' is a uint8_t,
+    // adding 1 here may (intentionally) roll over...so 0 = max brightness
+    // (color values are interpreted literally; no scaling), 1 = min
+    // brightness (off), 255 = just below max brightness.
+    uint8_t newBrightness = b + 1;
+    if (newBrightness != brightness) { // Compare against prior value
+        // Brightness has changed -- re-scale existing data in RAM
+        uint8_t  c,
+        *ptr           = pixels,
+        oldBrightness = brightness - 1; // De-wrap old brightness value
+        uint16_t scale;
+        if(oldBrightness == 0) scale = 0; // Avoid /0
+        else if(b == 255) scale = 65535 / oldBrightness;
+        else scale = (((uint16_t)newBrightness << 8) - 1) / oldBrightness;
+        for(uint16_t i=0; i<_numberOfBytes; i++) {
+            c      = *ptr;
+            *ptr++ = (c * scale) >> 8;
+        }
+        brightness = newBrightness;
     }
-    brightness = newBrightness;
-  }
 }
