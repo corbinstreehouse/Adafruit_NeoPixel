@@ -665,8 +665,8 @@ void Adafruit_NeoPixel::show(void) {
 #elif defined(__arm__)
 
 #if defined(__MK20DX128__) || defined(__MK20DX256__) // Teensy 3.0 & 3.1
-#define CYCLES_800_T0H  (F_CPU / 2500000)
-#define CYCLES_800_T1H  (F_CPU / 1250000)
+#define CYCLES_800_T0H  (F_CPU / 2500000) // corbin: .35us on, .8us off
+#define CYCLES_800_T1H  (F_CPU / 1250000) // 0.7us on, .6us off ??
 #define CYCLES_800      (F_CPU /  800000)
 #define CYCLES_400_T0H  (F_CPU / 2000000)
 #define CYCLES_400_T1H  (F_CPU /  833333)
