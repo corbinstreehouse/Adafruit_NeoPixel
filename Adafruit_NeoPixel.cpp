@@ -33,6 +33,9 @@
 
 #include "Adafruit_NeoPixel.h"
 
+// about 27.36us/LED. See https://learn.sparkfun.com/tutorials/ws2812-breakout-hookup-guide/ws2812-overview for datatransmission of 24 bits using the specified timing
+#define MICROSECONDS_TO_UPDATE_EACH_LED 27.36
+
 Adafruit_NeoPixel::Adafruit_NeoPixel(uint16_t n, uint8_t p, uint8_t t) : numLEDs(n), _numberOfBytes(n * 3), pin(p)
 #if defined(NEO_RGB) || defined(NEO_KHZ400)
   ,type(t)
@@ -787,8 +790,13 @@ void Adafruit_NeoPixel::show(void) {
 
 #endif // end Architecture select
 
-  interrupts();
-  endTime = micros(); // Save EOD time for latch on next call
+    // Before we update the interrupts, we want to update the timing so people who depend on millis() being correct will get (somewhat) correct timing.
+    uint32_t amountMillisIsOff = (uint32_t)((MICROSECONDS_TO_UPDATE_EACH_LED * (float)numLEDs) / 1000.0);
+    systick_millis_count += amountMillisIsOff;
+    
+    interrupts();
+    
+    endTime = micros(); // Save EOD time for latch on next call
 }
 
 // Set the output pin number
