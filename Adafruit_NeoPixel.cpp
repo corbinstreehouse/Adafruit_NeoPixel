@@ -812,28 +812,27 @@ void Adafruit_NeoPixel::setPin(uint8_t p) {
 }
 
 // Set pixel color from separate R,G,B components:
-void Adafruit_NeoPixel::setPixelColor(
- uint16_t n, uint8_t r, uint8_t g, uint8_t b) {
-  if(n < numLEDs) {
-    if(brightness) { // See notes in setBrightness()
-      r = (r * brightness) >> 8;
-      g = (g * brightness) >> 8;
-      b = (b * brightness) >> 8;
-    }
-    uint8_t *p = &pixels[n * 3];
+void Adafruit_NeoPixel::setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b) {
+    if (n < numLEDs) {
+        if(brightness) { // See notes in setBrightness()
+            r = (r * brightness) >> 8;
+            g = (g * brightness) >> 8;
+            b = (b * brightness) >> 8;
+        }
+        uint8_t *p = &pixels[n * 3];
 #ifdef NEO_RGB
-    if((type & NEO_COLMASK) == NEO_GRB) {
+        if((type & NEO_COLMASK) == NEO_GRB) {
 #endif
-      *p++ = g;
-      *p++ = r;
+            *p++ = g;
+            *p++ = r;
 #ifdef NEO_RGB
-    } else {
-      *p++ = r;
-      *p++ = g;
-    }
+        } else {
+            *p++ = r;
+            *p++ = g;
+        }
 #endif
-    *p = b;
-  }
+        *p = b;
+    }
 }
 
 // Set pixel color from 'packed' 32-bit RGB color:
