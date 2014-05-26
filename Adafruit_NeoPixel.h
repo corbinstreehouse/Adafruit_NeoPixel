@@ -54,7 +54,7 @@ public:
     void setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b);
     void setPixelColor(uint16_t n, uint32_t c);
     void setBrightness(uint8_t brightness);
-    uint8_t getBrightness() { return brightness; };
+    uint8_t getBrightness() { return m_brightness - 1; }; // stupid logic
     
     uint8_t *getPixels() const;
     uint16_t numPixels(void) const;
@@ -76,7 +76,7 @@ private:
     const uint8_t type;          // Pixel flags (400 vs 800 KHz, RGB vs GRB color)
 #endif
     uint8_t pin;           // Output pin number
-    uint8_t brightness;
+    uint8_t m_brightness;
     uint8_t *pixels;        // Holds LED color values (3 bytes each)
     uint32_t endTime;       // Latch timing reference
 #ifdef __AVR__

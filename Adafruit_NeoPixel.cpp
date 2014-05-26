@@ -814,10 +814,10 @@ void Adafruit_NeoPixel::setPin(uint8_t p) {
 // Set pixel color from separate R,G,B components:
 void Adafruit_NeoPixel::setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b) {
     if (n < numLEDs) {
-        if(brightness) { // See notes in setBrightness()
-            r = (r * brightness) >> 8;
-            g = (g * brightness) >> 8;
-            b = (b * brightness) >> 8;
+        if (m_brightness) { // See notes in setBrightness()
+            r = (r * m_brightness) >> 8; // This is just a clever way of multiplying by a value up to 256 (m_brightness) and dividing by 256 (the max brightness) to give a percentage from 0 to 255.
+            g = (g * m_brightness) >> 8;
+            b = (b * m_brightness) >> 8;
         }
         uint8_t *p = &pixels[n * 3];
 #ifdef NEO_RGB
@@ -841,10 +841,10 @@ void Adafruit_NeoPixel::setPixelColor(uint16_t n, uint32_t c) {
         uint8_t r = (uint8_t)(c >> 16);
         uint8_t g = (uint8_t)(c >>  8);
         uint8_t b = (uint8_t)c;
-        if (brightness) { // See notes in setBrightness()
-            r = (r * brightness) >> 8;
-            g = (g * brightness) >> 8;
-            b = (b * brightness) >> 8;
+        if (m_brightness) { // See notes in setBrightness()
+            r = (r * m_brightness) >> 8;
+            g = (g * m_brightness) >> 8;
+            b = (b * m_brightness) >> 8;
         }
         uint8_t *p = &pixels[n * 3];
 #ifdef NEO_RGB
@@ -918,11 +918,11 @@ void Adafruit_NeoPixel::setBrightness(uint8_t b) {
     // (color values are interpreted literally; no scaling), 1 = min
     // brightness (off), 255 = just below max brightness.
     uint8_t newBrightness = b + 1;
-    if (newBrightness != brightness) { // Compare against prior value
+    if (newBrightness != m_brightness) { // Compare against prior value
         // Brightness has changed -- re-scale existing data in RAM
         uint8_t  c,
         *ptr           = pixels,
-        oldBrightness = brightness - 1; // De-wrap old brightness value
+        oldBrightness = m_brightness - 1; // De-wrap old brightness value
         uint16_t scale;
         if(oldBrightness == 0) scale = 0; // Avoid /0
         else if(b == 255) scale = 65535 / oldBrightness;
@@ -931,6 +931,6 @@ void Adafruit_NeoPixel::setBrightness(uint8_t b) {
             c      = *ptr;
             *ptr++ = (c * scale) >> 8;
         }
-        brightness = newBrightness;
+        m_brightness = newBrightness;
     }
 }
