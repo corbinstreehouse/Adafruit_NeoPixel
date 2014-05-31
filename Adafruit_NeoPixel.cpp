@@ -32,11 +32,12 @@
   -------------------------------------------------------------------------*/
 
 #include "Adafruit_NeoPixel.h"
+#include "controller.h"
 
 // about 27.36us/LED. See https://learn.sparkfun.com/tutorials/ws2812-breakout-hookup-guide/ws2812-overview for datatransmission of 24 bits using the specified timing
 #define MICROSECONDS_TO_UPDATE_EACH_LED 27.36
 
-Adafruit_NeoPixel::Adafruit_NeoPixel(uint16_t n, uint8_t p, uint8_t t) : numLEDs(n), _numberOfBytes(n * 3), pin(p)
+Adafruit_NeoPixel::Adafruit_NeoPixel(uint32_t n, uint8_t p, uint8_t t) : numLEDs(n), _numberOfBytes(n * sizeof(CRGB)), pin(p)
 #if defined(NEO_RGB) || defined(NEO_KHZ400)
   ,type(t)
 #endif
@@ -45,18 +46,33 @@ Adafruit_NeoPixel::Adafruit_NeoPixel(uint16_t n, uint8_t p, uint8_t t) : numLEDs
    pinMask(digitalPinToBitMask(p))
 #endif
 {
-    pixels = (uint8_t *)malloc(_numberOfBytes);
-    memset(pixels, 0, _numberOfBytes);
+    m_pixels = (CRGB *)malloc(_numberOfBytes);
+    memset(m_pixels, 0, _numberOfBytes);
 }
 
 Adafruit_NeoPixel::~Adafruit_NeoPixel() {
-  if(pixels) free(pixels);
-//  pinMode(pin, INPUT);
+  free(m_pixels);
 }
 
 void Adafruit_NeoPixel::begin(void) {
   pinMode(pin, OUTPUT);
   digitalWrite(pin, LOW);
+}
+
+__attribute__ ((always_inline)) inline static void writeBits(register uint32_t &cyc, volatile uint8_t *set, volatile uint8_t *clr, register uint8_t &pix, uint32_t cycles, uint32_t t0h, uint32_t t1h)  {
+
+    for (uint8_t mask = 0x80; mask; mask >>= 1) {
+        while(ARM_DWT_CYCCNT - cyc < cycles);
+        cyc  = ARM_DWT_CYCCNT;
+        *set = 1;
+        if(pix & mask) {
+            while(ARM_DWT_CYCCNT - cyc < t1h);
+        } else {
+            while(ARM_DWT_CYCCNT - cyc < t0h);
+        }
+        *clr = 1;
+    }
+
 }
 
 void Adafruit_NeoPixel::show(void) {
@@ -674,37 +690,58 @@ void Adafruit_NeoPixel::show(void) {
 #define CYCLES_400_T1H  (F_CPU /  833333)
 #define CYCLES_400      (F_CPU /  400000)
 
-  uint8_t          *p   = pixels,
-                   *end = p + _numberOfBytes, pix, mask;
-  volatile uint8_t *set = portSetRegister(pin),
-                   *clr = portClearRegister(pin);
-  uint32_t          cyc;
-
-  ARM_DEMCR    |= ARM_DEMCR_TRCENA;
-  ARM_DWT_CTRL |= ARM_DWT_CTRL_CYCCNTENA;
-
-#ifdef NEO_KHZ400
-  if((type & NEO_SPDMASK) == NEO_KHZ800) { // 800 KHz bitstream
-#endif
-    cyc = ARM_DWT_CYCCNT + CYCLES_800;
-    while(p < end) {
-      pix = *p++;
-      for(mask = 0x80; mask; mask >>= 1) {
-        while(ARM_DWT_CYCCNT - cyc < CYCLES_800);
-        cyc  = ARM_DWT_CYCCNT;
-        *set = 1;
-        if(pix & mask) {
-          while(ARM_DWT_CYCCNT - cyc < CYCLES_800_T1H);
-        } else {
-          while(ARM_DWT_CYCCNT - cyc < CYCLES_800_T0H);
-        }
-        *clr = 1;
-      }
+    
+    EOrder order = GRB;
+#ifdef NEO_RGB
+    if ((type & NEO_COLMASK) == NEO_GRB) {
+        order = RGB;
+    } else {
+        order = RGB;
     }
-    while(ARM_DWT_CYCCNT - cyc < CYCLES_800);
+#endif
+    // TODO: test dithering??
+    CRGB scale = CRGB(m_brightness, m_brightness, m_brightness); // corbin, fix m_brightness to not mess w/stuff
+    // corbin...figure out how to do the template based on the type
+    PixelController<GRB> pixelController(m_pixels, numLEDs, scale, DISABLE_DITHER);
+
+    pixelController.preStepFirstByteDithering();
+    
+    volatile uint8_t *set = portSetRegister(pin);
+    volatile uint8_t *clr = portClearRegister(pin);
+    
+    ARM_DEMCR    |= ARM_DEMCR_TRCENA;
+    ARM_DWT_CTRL |= ARM_DWT_CTRL_CYCCNTENA;
+    
 #ifdef NEO_KHZ400
-  } else { // 400 kHz bitstream
-    cyc = ARM_DWT_CYCCNT + CYCLES_400;
+    if((type & NEO_SPDMASK) == NEO_KHZ800) { // 800 KHz bitstream
+#endif
+        uint32_t cyc = ARM_DWT_CYCCNT + CYCLES_800;
+        
+        register uint8_t b = pixelController.loadAndScale0();
+        while (pixelController.has(1)) {
+            pixelController.stepDithering();
+            
+            // Write first byte, read next byte
+            writeBits(cyc, set, clr, b, CYCLES_800, CYCLES_800_T0H, CYCLES_800_T1H);
+            b = pixelController.loadAndScale1();
+            
+            // Write second byte, read 3rd byte
+            writeBits(cyc, set, clr, b, CYCLES_800, CYCLES_800_T0H, CYCLES_800_T1H);
+            b = pixelController.loadAndScale2();
+            
+            // Write third byte, read 1st byte of next pixel
+            writeBits(cyc, set, clr, b, CYCLES_800, CYCLES_800_T0H, CYCLES_800_T1H);
+            b = pixelController.advanceAndLoadAndScale0();
+        };
+        
+        while(ARM_DWT_CYCCNT - cyc < CYCLES_800);
+#ifdef NEO_KHZ400
+    } else { // 400 kHz bitstream
+        
+        // corbin, re-write...
+#error corbin re-write for 400mhz
+        
+    uint32_t cyc = ARM_DWT_CYCCNT + CYCLES_400;
     while(p < end) {
       pix = *p++;
       for(mask = 0x80; mask; mask >>= 1) {
@@ -811,126 +848,9 @@ void Adafruit_NeoPixel::setPin(uint8_t p) {
 #endif
 }
 
-// Set pixel color from separate R,G,B components:
-void Adafruit_NeoPixel::setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b) {
-    if (n < numLEDs) {
-        if (m_brightness) { // See notes in setBrightness()
-            r = (r * m_brightness) >> 8; // This is just a clever way of multiplying by a value up to 256 (m_brightness) and dividing by 256 (the max brightness) to give a percentage from 0 to 255.
-            g = (g * m_brightness) >> 8;
-            b = (b * m_brightness) >> 8;
-        }
-        uint8_t *p = &pixels[n * 3];
-#ifdef NEO_RGB
-        if((type & NEO_COLMASK) == NEO_GRB) {
-#endif
-            *p++ = g;
-            *p++ = r;
-#ifdef NEO_RGB
-        } else {
-            *p++ = r;
-            *p++ = g;
-        }
-#endif
-        *p = b;
-    }
-}
-
-// Set pixel color from 'packed' 32-bit RGB color:
-void Adafruit_NeoPixel::setPixelColor(uint16_t n, uint32_t c) {
-    if (n < numLEDs) {
-        uint8_t r = (uint8_t)(c >> 16);
-        uint8_t g = (uint8_t)(c >>  8);
-        uint8_t b = (uint8_t)c;
-        if (m_brightness) { // See notes in setBrightness()
-            r = (r * m_brightness) >> 8;
-            g = (g * m_brightness) >> 8;
-            b = (b * m_brightness) >> 8;
-        }
-        uint8_t *p = &pixels[n * 3];
-#ifdef NEO_RGB
-        if((type & NEO_COLMASK) == NEO_GRB) {
-#endif
-            *p++ = g;
-            *p++ = r;
-#ifdef NEO_RGB
-        } else {
-            *p++ = r;
-            *p++ = g;
-        }
-#endif
-        *p = b;
-    }
-}
-
 // Convert separate R,G,B into packed 32-bit RGB color.
 // Packed format is always RGB, regardless of LED strand color order.
 uint32_t Adafruit_NeoPixel::Color(uint8_t r, uint8_t g, uint8_t b) {
   return ((uint32_t)r << 16) | ((uint32_t)g <<  8) | b;
 }
 
-// Query color from previously-set pixel (returns packed 32-bit RGB value)
-uint32_t Adafruit_NeoPixel::getPixelColor(uint16_t n) const {
-
-  if(n < numLEDs) {
-    uint16_t ofs = n * 3;
-    return (uint32_t)(pixels[ofs + 2]) |
-#ifdef NEO_RGB
-      (((type & NEO_COLMASK) == NEO_GRB) ?
-#endif
-        ((uint32_t)(pixels[ofs    ]) <<  8) |
-        ((uint32_t)(pixels[ofs + 1]) << 16)
-#ifdef NEO_RGB
-      :
-        ((uint32_t)(pixels[ofs    ]) << 16) |
-        ((uint32_t)(pixels[ofs + 1]) <<  8) )
-#endif
-      ;
-  }
-
-  return 0; // Pixel # is out of bounds
-}
-
-uint8_t *Adafruit_NeoPixel::getPixels(void) const {
-  return pixels;
-}
-
-uint16_t Adafruit_NeoPixel::numPixels(void) const {
-  return numLEDs;
-}
-
-// Adjust output brightness; 0=darkest (off), 255=brightest.  This does
-// NOT immediately affect what's currently displayed on the LEDs.  The
-// next call to show() will refresh the LEDs at this level.  However,
-// this process is potentially "lossy," especially when increasing
-// brightness.  The tight timing in the WS2811/WS2812 code means there
-// aren't enough free cycles to perform this scaling on the fly as data
-// is issued.  So we make a pass through the existing color data in RAM
-// and scale it (subsequent graphics commands also work at this
-// brightness level).  If there's a significant step up in brightness,
-// the limited number of steps (quantization) in the old data will be
-// quite visible in the re-scaled version.  For a non-destructive
-// change, you'll need to re-render the full strip data.  C'est la vie.
-void Adafruit_NeoPixel::setBrightness(uint8_t b) {
-    // Stored brightness value is different than what's passed.
-    // This simplifies the actual scaling math later, allowing a fast
-    // 8x8-bit multiply and taking the MSB.  'brightness' is a uint8_t,
-    // adding 1 here may (intentionally) roll over...so 0 = max brightness
-    // (color values are interpreted literally; no scaling), 1 = min
-    // brightness (off), 255 = just below max brightness.
-    uint8_t newBrightness = b + 1;
-    if (newBrightness != m_brightness) { // Compare against prior value
-        // Brightness has changed -- re-scale existing data in RAM
-        uint8_t  c,
-        *ptr           = pixels,
-        oldBrightness = m_brightness - 1; // De-wrap old brightness value
-        uint16_t scale;
-        if(oldBrightness == 0) scale = 0; // Avoid /0
-        else if(b == 255) scale = 65535 / oldBrightness;
-        else scale = (((uint16_t)newBrightness << 8) - 1) / oldBrightness;
-        for(uint16_t i=0; i<_numberOfBytes; i++) {
-            c      = *ptr;
-            *ptr++ = (c * scale) >> 8;
-        }
-        m_brightness = newBrightness;
-    }
-}

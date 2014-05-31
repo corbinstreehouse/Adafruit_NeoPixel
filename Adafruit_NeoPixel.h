@@ -35,29 +35,39 @@
 //#define NEO_KHZ400  0x00 // 400 KHz datastream
 #endif
 
+#import "pixeltypes.h"
+
 typedef struct {
-    // TODO: maybe add #define support for GRB vs RGB
-    uint8_t green, red, blue; // grb format
+    uint8_t red, green, blue;
 } rgb_color;
 
 class Adafruit_NeoPixel {
-    
+private:
+    CRGB *m_pixels;        // Holds LED color values (3 bytes each)
 public:
     
     // Constructor: number of LEDs, pin number, LED type
-    Adafruit_NeoPixel(uint16_t n, uint8_t p=6, uint8_t t=NEO_GRB + NEO_KHZ800);
+    Adafruit_NeoPixel(uint32_t n, uint8_t p=6, uint8_t t=NEO_GRB + NEO_KHZ800);
     ~Adafruit_NeoPixel();
     
     void begin(void);
     void show(void);
     void setPin(uint8_t p);
-    void setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b);
-    void setPixelColor(uint16_t n, uint32_t c);
-    void setBrightness(uint8_t brightness);
-    uint8_t getBrightness() { return m_brightness - 1; }; // stupid logic
     
-    uint8_t *getPixels() const;
-    uint16_t numPixels(void) const;
+    inline void setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b) {
+        m_pixels[n] = CRGB(r, g, b);
+    };
+    
+    inline void setPixelColor(uint16_t n, uint32_t c) {
+        m_pixels[n] = c;
+    };
+    
+    void setBrightness(uint8_t brightness) { m_brightness = brightness; };
+    uint8_t getBrightness() { return m_brightness; };
+    
+    inline uint8_t *getPixels() const { return (uint8_t *)m_pixels; };
+    uint32_t numPixels() const { return numLEDs; };
+    
     static uint32_t Color(uint8_t r, uint8_t g, uint8_t b);
     static rgb_color ConvertColorToRGBColor(uint32_t color) {
         rgb_color c;
@@ -66,18 +76,19 @@ public:
         c.blue = color;
         return c;
     }
-    uint32_t getPixelColor(uint16_t n) const;
+    uint32_t getPixelColor(uint16_t n) const {
+        return m_pixels[n];
+    }
     uint16_t getNumberOfBytes() { return _numberOfBytes; };
     
 private:
-    const uint16_t numLEDs;       // Number of RGB LEDs in strip
-    const uint16_t _numberOfBytes;      // Size of 'pixels' buffer below; this is numLEDs*3, but storing it reduces the code size by about 8 bytes when compiled (due to the savings in *3 being done at other places)
+    const uint32_t numLEDs;       // Number of RGB LEDs in strip
+    const uint32_t _numberOfBytes;      // Size of 'pixels' buffer below; this is numLEDs*3, but storing it reduces the code size by about 8 bytes when compiled (due to the savings in *3 being done at other places)
 #if defined(NEO_RGB) || defined(NEO_KHZ400)
     const uint8_t type;          // Pixel flags (400 vs 800 KHz, RGB vs GRB color)
 #endif
     uint8_t pin;           // Output pin number
     uint8_t m_brightness;
-    uint8_t *pixels;        // Holds LED color values (3 bytes each)
     uint32_t endTime;       // Latch timing reference
 #ifdef __AVR__
     const volatile uint8_t *port;         // Output PORT register
