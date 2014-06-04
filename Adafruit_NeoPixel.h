@@ -35,7 +35,7 @@
 //#define NEO_KHZ400  0x00 // 400 KHz datastream
 #endif
 
-#import "pixeltypes.h"
+#include "pixeltypes.h"
 
 typedef struct {
     uint8_t red, green, blue;
