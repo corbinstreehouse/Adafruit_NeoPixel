@@ -44,10 +44,11 @@ typedef struct {
 class Adafruit_NeoPixel {
 private:
     CRGB *m_pixels;        // Holds LED color values (3 bytes each)
+    bool m_ownPixels;
 public:
     
     // Constructor: number of LEDs, pin number, LED type
-    Adafruit_NeoPixel(uint32_t n, uint8_t p=6, uint8_t t=NEO_GRB + NEO_KHZ800);
+    Adafruit_NeoPixel(uint32_t n, uint8_t p=6, uint8_t t=NEO_GRB + NEO_KHZ800, CRGB *pixels = NULL);
     ~Adafruit_NeoPixel();
     
     void begin(void);

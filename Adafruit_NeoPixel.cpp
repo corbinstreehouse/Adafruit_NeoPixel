@@ -37,7 +37,7 @@
 // about 27.36us/LED. See https://learn.sparkfun.com/tutorials/ws2812-breakout-hookup-guide/ws2812-overview for datatransmission of 24 bits using the specified timing
 #define MICROSECONDS_TO_UPDATE_EACH_LED 27.36
 
-Adafruit_NeoPixel::Adafruit_NeoPixel(uint32_t n, uint8_t p, uint8_t t) : numLEDs(n), _numberOfBytes(n * sizeof(CRGB)), pin(p)
+Adafruit_NeoPixel::Adafruit_NeoPixel(uint32_t n, uint8_t p, uint8_t t, CRGB *pixels) : numLEDs(n), _numberOfBytes(n * sizeof(CRGB)), pin(p)
 #if defined(NEO_RGB) || defined(NEO_KHZ400)
   ,type(t)
 #endif
@@ -46,12 +46,18 @@ Adafruit_NeoPixel::Adafruit_NeoPixel(uint32_t n, uint8_t p, uint8_t t) : numLEDs
    pinMask(digitalPinToBitMask(p))
 #endif
 {
-    m_pixels = (CRGB *)malloc(_numberOfBytes);
-    memset(m_pixels, 0, _numberOfBytes);
+    m_pixels = pixels;
+    if (m_pixels == NULL) {
+        m_ownPixels = true;
+        m_pixels = (CRGB *)malloc(_numberOfBytes);
+        memset(m_pixels, 0, _numberOfBytes);
+    }
 }
 
 Adafruit_NeoPixel::~Adafruit_NeoPixel() {
-  free(m_pixels);
+    if (m_ownPixels) {
+        free(m_pixels);
+    }
 }
 
 void Adafruit_NeoPixel::begin(void) {
