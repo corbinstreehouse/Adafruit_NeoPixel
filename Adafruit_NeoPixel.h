@@ -54,6 +54,7 @@ public:
     void begin(void);
     void show(void);
     void setPin(uint8_t p);
+    inline uint8_t getPin() { return pin; }
     
     inline void setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b) {
         m_pixels[n] = CRGB(r, g, b);
