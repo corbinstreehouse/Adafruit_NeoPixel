@@ -34,8 +34,15 @@
 #include "Adafruit_NeoPixel.h"
 #include "controller.h"
 
-// about 27.36us/LED. See https://learn.sparkfun.com/tutorials/ws2812-breakout-hookup-guide/ws2812-overview for datatransmission of 24 bits using the specified timing
-#define MICROSECONDS_TO_UPDATE_EACH_LED 27.36
+// Macro to convert from nano-seconds to clocks and clocks to nano-seconds
+// #define NS(_NS) (_NS / (1000 / (F_CPU / 1000000L)))
+#if 1 || (F_CPU < 96000000)
+#define NS(_NS) ( (_NS * (F_CPU / 1000000L))) / 1000
+#define CLKS_TO_MICROS(_CLKS) ((_CLKS)) / (F_CPU / 1000000L)
+#else
+#define NS(_NS) ( (_NS * (F_CPU / 2000000L))) / 1000
+#define CLKS_TO_MICROS(_CLKS) ((long)(_CLKS)) / (F_CPU / 2000000L)
+#endif
 
 Adafruit_NeoPixel::Adafruit_NeoPixel(uint32_t n, uint8_t p, uint8_t t, CRGB *pixels) : m_brightness(255), numLEDs(n), _numberOfBytes(n * sizeof(CRGB)), pin(p)
 #if defined(NEO_RGB) || defined(NEO_KHZ400)
@@ -106,8 +113,9 @@ void Adafruit_NeoPixel::show(void) {
   // state, computes 'pin high' and 'pin low' values, and writes these back
   // to the PORT register as needed.
 
-  noInterrupts(); // Need 100% focus on instruction timing
 
+    noInterrupts(); // Need 100% focus on instruction timing
+    
 #ifdef __AVR__
 
   volatile uint16_t
@@ -721,6 +729,14 @@ void Adafruit_NeoPixel::show(void) {
 #ifdef NEO_KHZ400
     if((type & NEO_SPDMASK) == NEO_KHZ800) { // 800 KHz bitstream
 #endif
+
+        // corbin, mostly copied from fast LED...
+        
+	    // Get access to the clock
+		ARM_DEMCR    |= ARM_DEMCR_TRCENA;
+		ARM_DWT_CTRL |= ARM_DWT_CTRL_CYCCNTENA;
+		ARM_DWT_CYCCNT = 0;
+        
         uint32_t cyc = ARM_DWT_CYCCNT + CYCLES_800;
         
         register uint8_t b = pixelController.loadAndScale0();
@@ -740,7 +756,16 @@ void Adafruit_NeoPixel::show(void) {
             b = pixelController.advanceAndLoadAndScale0();
         };
         
-        while(ARM_DWT_CYCCNT - cyc < CYCLES_800);
+        while (ARM_DWT_CYCCNT - cyc < CYCLES_800);
+        
+		long clocks = ARM_DWT_CYCCNT;
+
+        // adjust the counter.. (copied from fast LED)
+        // this fixes millis to be right!!!
+        
+		long microsTaken = CLKS_TO_MICROS(clocks);
+		systick_millis_count += (microsTaken / 1000);
+        
 #ifdef NEO_KHZ400
     } else { // 400 kHz bitstream
         
@@ -832,11 +857,6 @@ void Adafruit_NeoPixel::show(void) {
 #endif // end Arduino Due
 
 #endif // end Architecture select
-
-    // Before we update the interrupts, we want to update the timing so people who depend on millis() being correct will get (somewhat) correct timing.
-    uint32_t amountMillisIsOff = (uint32_t)((MICROSECONDS_TO_UPDATE_EACH_LED * (float)numLEDs) / 1000.0);
-    systick_millis_count += amountMillisIsOff;
-    
     interrupts();
     
     endTime = micros(); // Save EOD time for latch on next call
