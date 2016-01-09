@@ -35,7 +35,7 @@
 //#define NEO_KHZ400  0x00 // 400 KHz datastream
 #endif
 
-#include "pixeltypes.h"
+#include "FastLED.h"
 
 typedef struct {
     uint8_t red, green, blue;
